@@ -1,0 +1,98 @@
+#Practical Machine Learning - Peer Graded Assignment
+
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.  
+
+## Mission
+In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants and predict how well the test cases have performed.
+
+## loading necessary packages.
+```{r, cache = T}
+library(randomForest)
+library(rpart)
+library(caret)
+library(rpart.plot)
+library(corrplot)
+library(e1071)
+```
+### Loading the data
+```{r, cache = T}
+train_url <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train_file <- "./data/pml-training.csv"
+test_file  <- "./data/pml-testing.csv"
+if (!file.exists("./data")) {
+  dir.create("./data")
+}
+if (!file.exists(train_file)) {
+  download.file(train_url, destfile=train_file, method="curl")
+}
+if (!file.exists(test_file)) {
+  download.file(train_url, destfile=test_file, method="curl")
+}
+```  
+### Reading the data into R
+ 
+```{r, cache = T}
+train_raw <- read.csv("./data/pml-training.csv")
+test_raw <- read.csv("./data/pml-testing.csv")
+dim(train_raw)
+dim(test_raw)
+```
+
+### Cleaning the data
+```{r, cache = T}
+sum(complete.cases(train_raw))
+```
+Removing columns containing missing values
+```{r, cache = T}
+train_raw <- train_raw[, colSums(is.na(train_raw)) == 0] 
+test_raw <- test_raw[, colSums(is.na(test_raw)) == 0] 
+```  
+
+```{r, cache = T}
+classe <- train_raw$classe
+train_remove <- grepl("^X|timestamp|window", names(train_raw))
+train_raw <- train_raw[, !train_remove]
+train_cleaned <- train_raw[, sapply(train_raw, is.numeric)]
+train_cleaned$classe <- classe
+test_remove <- grepl("^X|timestamp|window", names(test_raw))
+test_raw <- test_raw[, !test_remove]
+test_cleaned <- test_raw[, sapply(test_raw, is.numeric)]
+```
+### Splitting the data for cross validation
+Then, we can split the cleaned training set into a pure training data set (70%) and a validation data set (30%). We will use the validation data set to conduct cross validation in future steps.  
+```{r, cache = T}
+set.seed(22519)
+in_train <- createDataPartition(train_cleaned$classe, p=0.70, list=F)
+train_data <- train_cleaned[in_train, ]
+test_data <- train_cleaned[-in_train, ]
+```
+
+## Data Modeling
+We use RANDOM FORESTS and 5-fold-cross-validation for model building.  
+```{r, cache = T}
+control_rf <- trainControl(method="cv", 5)
+model_rf <- train(classe ~ ., data=train_data, method="rf", trControl=control_rf, ntree=250)
+
+```
+Using CV dataset to estimate the error.  
+```{r, cache = T}
+predict_rf <- predict(model_rf, test_data)
+confusionMatrix(test_data$classe, predict_rf)
+```
+```{r, cache = T}
+accuracy <- postResample(predict_rf, test_data$classe)
+accuracy
+out_of_sample_error <- 1 - as.numeric(confusionMatrix(test_data$classe, predict_rf)$overall[1])
+out_of_sample_error
+```
+The estimated out-of-sample error is 0.68%.
+
+## Predicting for Test Data 
+Now, we apply the model to the test data.  
+```{r, cache = T}
+result <- predict(model_rf, test_cleaned[, -length(names(test_cleaned))])
+result
+```  
+
